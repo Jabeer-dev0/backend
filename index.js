@@ -23,6 +23,9 @@ app.use(cors({
   credentials: true,
 }))
 app.use(express.json({ limit: '25mb' }))
+app.get('/',(req,res)=>{
+    res.send("server running")
+})
 
 app.get('/health', (req, res) => {
   const dbReady = mongoose.connection.readyState === 1
