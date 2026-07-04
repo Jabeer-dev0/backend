@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "nodemon dev.js",
     "start": "node dev.js",
+    "vercel-build": "echo \"No build step\""
+  },
     "migrate:r2": "node scripts/upload-to-r2.mjs"
   },
   "dependencies": {

@@ -6,18 +6,25 @@ function requestPath(req) {
   return String(req.url || '/').split('?')[0]
 }
 
-async function quickHealth(res) {
-  const uri = String(process.env.MONGODB_URI || '').trim().replace(/^['"]|['"]$/g, '')
+function sendJson(res, status, data) {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(data))
+}
 
+function envStatus() {
+  return {
+    hasMongoUri: Boolean(process.env.MONGODB_URI?.trim()),
+    hasJwtSecret: Boolean(process.env.JWT_SECRET?.trim()),
+    hasFrontendUrl: Boolean(process.env.FRONTEND_URL?.trim()),
+    onVercel: Boolean(process.env.VERCEL),
+  }
+}
+
+async function checkMongo() {
+  const uri = String(process.env.MONGODB_URI || '').trim().replace(/^['"]|['"]$/g, '')
   if (!uri) {
-    res.statusCode = 503
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({
-      ok: false,
-      db: 'missing MONGODB_URI',
-      hint: 'Vercel → Settings → Environment Variables → add MONGODB_URI',
-    }))
-    return
+    return { ok: false, db: 'missing MONGODB_URI', hint: 'Vercel → Environment Variables → MONGODB_URI' }
   }
 
   try {
@@ -31,49 +38,55 @@ async function quickHealth(res) {
         bufferCommands: false,
       })
     }
-
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ ok: true, db: 'connected' }))
+    return { ok: true, db: 'connected' }
   } catch (err) {
-    res.statusCode = 503
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({
+    return {
       ok: false,
       db: 'disconnected',
       message: err.message,
       hint: 'MongoDB Atlas → Network Access → Allow 0.0.0.0/0',
-    }))
+    }
   }
 }
 
-async function getHandler() {
+async function loadHandler() {
   if (!handlerPromise) {
-    handlerPromise = import('./src/app.js').then(({ default: app }) => serverless(app))
+    handlerPromise = import('./src/app.js')
+      .then(({ default: app }) => serverless(app))
+      .catch((err) => {
+        handlerPromise = null
+        throw err
+      })
   }
   return handlerPromise
 }
 
-module.exports = async (req, res) => {
+module.exports = (req, res) => {
   const path = requestPath(req)
 
   if (path === '/favicon.ico' || path === '/favicon.png') {
     res.statusCode = 204
     res.end()
-    return
+    return undefined
   }
 
   if (path === '/') {
-    res.statusCode = 200
-    res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ ok: true, service: 'AniKura API' }))
-    return
+    sendJson(res, 200, { ok: true, service: 'AniKura API', env: envStatus() })
+    return undefined
   }
 
   if (path === '/health') {
-    return quickHealth(res)
+    return checkMongo().then((result) => {
+      sendJson(res, result.ok ? 200 : 503, { ...result, env: envStatus() })
+    })
   }
 
-  const handler = await getHandler()
-  return handler(req, res)
+  return loadHandler()
+    .then((handler) => handler(req, res))
+    .catch((err) => {
+      sendJson(res, 500, {
+        message: err.message || 'Server failed to start',
+        env: envStatus(),
+      })
+    })
 }
