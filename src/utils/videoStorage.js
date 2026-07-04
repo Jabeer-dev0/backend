@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { fileURLToPath } from 'url'
 import { randomUUID } from 'crypto'
 import dotenv from 'dotenv'
@@ -11,10 +12,27 @@ dotenv.config()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export const SERVER_ROOT = path.join(__dirname, '../..')
-export const VIDEO_DIR = process.env.VIDEO_STORAGE_PATH || 'D:\\AniKura\\videos'
+
+function resolveVideoDir() {
+  if (process.env.VIDEO_STORAGE_PATH) {
+    return process.env.VIDEO_STORAGE_PATH
+  }
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join(os.tmpdir(), 'anikura-videos')
+  }
+  return path.join(SERVER_ROOT, 'data', 'videos')
+}
+
+export const VIDEO_DIR = resolveVideoDir()
 
 export function ensureVideoDir() {
-  fs.mkdirSync(VIDEO_DIR, { recursive: true })
+  try {
+    fs.mkdirSync(VIDEO_DIR, { recursive: true })
+    return true
+  } catch (err) {
+    console.warn(`Could not create video dir (${VIDEO_DIR}):`, err.message)
+    return false
+  }
 }
 
 export function makeStoredName(originalName = 'video.mp4') {

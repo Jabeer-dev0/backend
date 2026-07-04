@@ -15,13 +15,14 @@ import {
   useCloudStorage,
 } from '../utils/videoStorage.js'
 
-if (!useCloudStorage()) ensureVideoDir()
-
 const router = express.Router()
 
 function uploadDestination(_req, file, cb) {
   if (isZipFile(file) || useCloudStorage()) cb(null, os.tmpdir())
-  else cb(null, VIDEO_DIR)
+  else {
+    ensureVideoDir()
+    cb(null, VIDEO_DIR)
+  }
 }
 
 const upload = multer({
