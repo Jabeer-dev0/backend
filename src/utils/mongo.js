@@ -15,10 +15,11 @@ export function normalizeMongoUri(raw = '') {
 
 export function mongoOptions() {
   return {
-    serverSelectionTimeoutMS: 8000,
-    connectTimeoutMS: 8000,
+    serverSelectionTimeoutMS: 6000,
+    connectTimeoutMS: 6000,
     maxPoolSize: process.env.VERCEL ? 1 : 10,
     bufferCommands: false,
+    family: 4,
   }
 }
 

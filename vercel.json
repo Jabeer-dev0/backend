@@ -5,5 +5,10 @@
   ],
   "routes": [
     { "src": "/(.*)", "dest": "/index.cjs" }
-  ]
+  ],
+  "functions": {
+    "index.cjs": {
+      "maxDuration": 30
+    }
+  }
 }
