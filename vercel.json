@@ -1,9 +1,9 @@
 {
   "version": 2,
-  "functions": {
-    "index.cjs": {
-      "maxDuration": 60,
-      "includeFiles": "src/**"
-    }
-  }
+  "builds": [
+    { "src": "index.cjs", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "/index.cjs" }
+  ]
 }
