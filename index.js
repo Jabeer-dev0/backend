@@ -48,6 +48,9 @@ async function connectMongo(retries = 0) {
     return connectMongo(retries + 1)
   }
 }
+ const server = app.listen(PORT, () => {
+    console.log(`server running on http://localhost:${PORT}`)
+  })
 
 async function start() {
   await connectMongo()
@@ -66,9 +69,7 @@ async function start() {
   app.use('/api/uploads', (await import('./src/routes/uploads.js')).default)
   app.use('/api/settings', (await import('./src/routes/settings.js')).default)
 
-  const server = app.listen(PORT, () => {
-    console.log(`server running on http://localhost:${PORT}`)
-  })
+ 
   server.requestTimeout = 0
   server.headersTimeout = 0
 
@@ -80,3 +81,4 @@ start().catch((err) => {
   console.error(err)
   process.exit(1)
 })
+module.exports=server
