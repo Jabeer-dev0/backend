@@ -1,6 +1,5 @@
 import express from 'express'
 import cors from 'cors'
-import mongoose from 'mongoose'
 import dotenv from 'dotenv'
 
 import publicRoutes from './routes/public.js'
@@ -16,6 +15,7 @@ import analyticsRoutes from './routes/analytics.js'
 import mediaRoutes from './routes/media.js'
 import uploadsRoutes from './routes/uploads.js'
 import settingsRoutes from './routes/settings.js'
+import { connectMongo, mongoHealthHint, normalizeMongoUri } from './utils/mongo.js'
 
 dotenv.config()
 
@@ -35,43 +35,21 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '25mb' }))
 
-let connectPromise = null
-
-function mongoOptions() {
-  return {
-    serverSelectionTimeoutMS: 15000,
-    maxPoolSize: process.env.VERCEL ? 1 : 10,
-  }
-}
-
-export async function connectMongo() {
-  if (mongoose.connection.readyState === 1) return mongoose.connection
-
-  const uri = process.env.MONGODB_URI?.trim()
-  if (!uri) {
-    throw new Error('Missing MONGODB_URI in environment')
-  }
-
-  if (!connectPromise) {
-    connectPromise = mongoose.connect(uri, mongoOptions()).then(() => {
-      console.log('MongoDB connected')
-      return mongoose.connection
-    }).catch((err) => {
-      connectPromise = null
-      throw err
-    })
-  }
-
-  return connectPromise
-}
-
 app.get('/', (req, res) => {
   res.json({ ok: true, service: 'AniKura API' })
 })
 
+app.get('/favicon.ico', (req, res) => res.status(204).end())
+app.get('/favicon.png', (req, res) => res.status(204).end())
+
 app.get('/health', async (req, res) => {
-  if (!process.env.MONGODB_URI?.trim()) {
-    return res.status(503).json({ ok: false, db: 'missing MONGODB_URI' })
+  const uri = normalizeMongoUri(process.env.MONGODB_URI)
+  if (!uri) {
+    return res.status(503).json({
+      ok: false,
+      db: 'missing MONGODB_URI',
+      hint: mongoHealthHint('Missing MONGODB_URI'),
+    })
   }
 
   try {
@@ -82,6 +60,7 @@ app.get('/health', async (req, res) => {
       ok: false,
       db: 'disconnected',
       message: err.message,
+      hint: mongoHealthHint(err.message),
     })
   }
 })
@@ -92,7 +71,10 @@ app.use(async (req, res, next) => {
     next()
   } catch (err) {
     console.error('MongoDB connection failed:', err.message)
-    res.status(503).json({ message: 'Database unavailable' })
+    res.status(503).json({
+      message: 'Database unavailable',
+      hint: mongoHealthHint(err.message),
+    })
   }
 })
 
