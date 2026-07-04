@@ -13,13 +13,26 @@ dotenv.config()
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export const SERVER_ROOT = path.join(__dirname, '../..')
 
+function isServerlessRuntime() {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.VERCEL_ENV)
+}
+
+function isWindowsAbsolutePath(value = '') {
+  return /^[a-zA-Z]:[\\/]/.test(String(value).trim())
+}
+
 function resolveVideoDir() {
-  if (process.env.VIDEO_STORAGE_PATH) {
-    return process.env.VIDEO_STORAGE_PATH
+  const envPath = (process.env.VIDEO_STORAGE_PATH || '').trim()
+  const serverless = isServerlessRuntime()
+
+  if (envPath && !(serverless && isWindowsAbsolutePath(envPath))) {
+    return envPath
   }
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+
+  if (serverless) {
     return path.join(os.tmpdir(), 'anikura-videos')
   }
+
   return path.join(SERVER_ROOT, 'data', 'videos')
 }
 

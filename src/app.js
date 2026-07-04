@@ -37,15 +37,23 @@ app.use(express.json({ limit: '25mb' }))
 
 let connectPromise = null
 
+function mongoOptions() {
+  return {
+    serverSelectionTimeoutMS: 15000,
+    maxPoolSize: process.env.VERCEL ? 1 : 10,
+  }
+}
+
 export async function connectMongo() {
   if (mongoose.connection.readyState === 1) return mongoose.connection
 
-  if (!process.env.MONGODB_URI) {
+  const uri = process.env.MONGODB_URI?.trim()
+  if (!uri) {
     throw new Error('Missing MONGODB_URI in environment')
   }
 
   if (!connectPromise) {
-    connectPromise = mongoose.connect(process.env.MONGODB_URI).then(() => {
+    connectPromise = mongoose.connect(uri, mongoOptions()).then(() => {
       console.log('MongoDB connected')
       return mongoose.connection
     }).catch((err) => {
@@ -57,6 +65,27 @@ export async function connectMongo() {
   return connectPromise
 }
 
+app.get('/', (req, res) => {
+  res.json({ ok: true, service: 'AniKura API' })
+})
+
+app.get('/health', async (req, res) => {
+  if (!process.env.MONGODB_URI?.trim()) {
+    return res.status(503).json({ ok: false, db: 'missing MONGODB_URI' })
+  }
+
+  try {
+    await connectMongo()
+    return res.json({ ok: true, db: 'connected' })
+  } catch (err) {
+    return res.status(503).json({
+      ok: false,
+      db: 'disconnected',
+      message: err.message,
+    })
+  }
+})
+
 app.use(async (req, res, next) => {
   try {
     await connectMongo()
@@ -65,15 +94,6 @@ app.use(async (req, res, next) => {
     console.error('MongoDB connection failed:', err.message)
     res.status(503).json({ message: 'Database unavailable' })
   }
-})
-
-app.get('/', (req, res) => {
-  res.json({ ok: true, service: 'AniKura API' })
-})
-
-app.get('/health', (req, res) => {
-  const dbReady = mongoose.connection.readyState === 1
-  res.status(dbReady ? 200 : 503).json({ ok: dbReady, db: dbReady ? 'connected' : 'disconnected' })
 })
 
 app.use('/api/public', publicRoutes)
