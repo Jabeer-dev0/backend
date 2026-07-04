@@ -1,0 +1,60 @@
+import mongoose from 'mongoose'
+
+const AnimeSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true },
+    slug: { type: String, default: '' },
+    alternateTitle: { type: String, default: '' },
+    japaneseTitle: { type: String, default: '' },
+    shortTitle: { type: String, default: '' },
+    description: { type: String, default: '' },
+    tagline: { type: String, default: '' },
+    type: { type: String, enum: ['TV', 'Movie', 'OVA', 'ONA', 'Special'], default: 'TV' },
+    status: { type: String, enum: ['ongoing', 'completed', 'upcoming', 'paused'], default: 'ongoing' },
+    moderationStatus: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Approved' },
+    season: { type: String, enum: ['Winter', 'Spring', 'Summer', 'Fall', ''], default: '' },
+    releaseYear: { type: Number, default: null },
+    ageRating: { type: String, default: '' },
+    languages: [{ type: String }],
+    subAvailable: { type: Boolean, default: true },
+    dubAvailable: { type: Boolean, default: false },
+    studio: { type: String, default: '' },
+    sourceMaterial: { type: String, default: '' },
+    poster: { type: String, default: '' },
+    banner: { type: String, default: '' },
+    logo: { type: String, default: '' },
+    coverImage: { type: String, default: '' },
+    trailerUrl: { type: String, default: '' },
+    gallery: [{ type: String }],
+    genres: [{ type: String }],
+    tags: [{ type: String }],
+    keywords: [{ type: String }],
+    relatedAnimeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Anime' }],
+    featured: { type: Boolean, default: false },
+    trending: { type: Boolean, default: false },
+    recommended: { type: Boolean, default: false },
+    visibility: { type: String, enum: ['draft', 'published', 'scheduled'], default: 'draft' },
+    totalEpisodes: { type: Number, default: 0 },
+    runtime: { type: Number, default: 24 },
+    releaseDate: { type: String, default: '' },
+    releaseStartDate: { type: String, default: '' },
+    releaseEndDate: { type: String, default: '' },
+    scheduledReleaseAt: { type: Date, default: null },
+    metaTitle: { type: String, default: '' },
+    metaDescription: { type: String, default: '' },
+    ogImage: { type: String, default: '' },
+    ratingAvg: { type: Number, default: 0 },
+    ratingCount: { type: Number, default: 0 },
+    views: { type: Number, default: 0 },
+    likes: { type: Number, default: 0 },
+    bookmarks: { type: Number, default: 0 },
+    finishedAiring: { type: Boolean, default: false },
+  },
+  { timestamps: true },
+)
+
+AnimeSchema.index({ title: 'text', keywords: 'text' })
+AnimeSchema.index({ slug: 1 })
+AnimeSchema.index({ visibility: 1, status: 1 })
+
+export default mongoose.model('Anime', AnimeSchema)
