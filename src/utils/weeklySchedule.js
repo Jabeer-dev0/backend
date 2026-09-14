@@ -110,5 +110,7 @@ export async function computeAllWeeklySchedules() {
     }
   }
 
+  entries.sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt))
+
   return entries
 }

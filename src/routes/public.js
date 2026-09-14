@@ -1041,7 +1041,7 @@ router.get('/schedule', async (req, res) => {
         ...publicEpisode(req, entry),
         note: 'Not Out Yet',
       })),
-    ],
+    ].sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt)),
     upcomingAnimes: upcomingAnimes.map((anime) => publicAnime(req, anime)),
   }
   cacheSet('public:schedule', payload, 60_000)
