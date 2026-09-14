@@ -14,7 +14,7 @@ import Bookmark from '../models/Bookmark.js'
 import { resolveVideoPath, pipeLocalVideo, enrichEpisodeVideo } from '../utils/videoStorage.js'
 import { streamFromR2 } from '../utils/r2Storage.js'
 import { releaseDueEpisodes } from '../utils/episodeScheduler.js'
-import { generateWeeklyEpisodes } from '../utils/weeklySchedule.js'
+import { generateWeeklyEpisodes, computeAllWeeklySchedules, computeNextWeeklySchedule } from '../utils/weeklySchedule.js'
 import { applyFinishedAiringFlag, convertUpcomingToOngoing } from '../utils/newAdditionsScheduler.js'
 import { extractUserToken, requireUser, verifyUserToken } from './userAuth.js'
 import User from '../models/User.js'
@@ -452,7 +452,6 @@ router.get('/animes/:animeId', async (req, res) => {
     return res.json(cached)
   }
 
-  refreshPublicSchedules()
   const param = req.params.animeId
   const isObjectId = isHexId(param)
   const anime = await Anime.findOne({
@@ -461,6 +460,7 @@ router.get('/animes/:animeId', async (req, res) => {
   }).lean()
   if (!anime) return res.status(404).json({ message: 'Not found' })
 
+  // Real scheduled episode (with video, waiting for releaseAt)
   const nextScheduled = await Episode.findOne({
     animeId: anime._id,
     status: 'scheduled',
@@ -471,7 +471,22 @@ router.get('/animes/:animeId', async (req, res) => {
     .select('episodeNo episodeType title releaseAt status')
     .lean()
 
-  const payload = { anime: publicAnime(req, anime), nextScheduled }
+  // If no real scheduled episode, compute from weeklySchedule config
+  const computedSchedule = !nextScheduled ? computeNextWeeklySchedule({
+    ...anime,
+    weeklySchedule: JSON.parse(anime.weeklySchedule || '{}'),
+  }) : null
+
+  const payload = {
+    anime: publicAnime(req, anime),
+    nextScheduled: nextScheduled || (computedSchedule ? {
+      episodeNo: computedSchedule.episodeNo,
+      title: computedSchedule.title,
+      releaseAt: computedSchedule.releaseAt,
+      status: 'not_out_yet',
+      note: 'Not Out Yet',
+    } : null),
+  }
   cacheSet(cacheKey, payload, 90_000)
   setPublicCache(res, 90)
   res.json(payload)
@@ -997,8 +1012,9 @@ router.get('/schedule', async (req, res) => {
     return res.json(cached)
   }
 
-  refreshPublicSchedules()
   const now = new Date()
+
+  // Real scheduled episodes (with video uploaded, waiting for releaseAt)
   const episodes = await Episode.find({
     published: true,
     status: 'scheduled',
@@ -1008,12 +1024,24 @@ router.get('/schedule', async (req, res) => {
     .sort({ releaseAt: 1 })
     .lean()
 
+  // Computed "Not Out Yet" entries from weeklySchedule config
+  const computedEntries = await computeAllWeeklySchedules()
+  // Filter out computed entries whose anime already has a real scheduled episode
+  const realAnimeIds = new Set(episodes.map((e) => String(e.animeId?._id || e.animeId)))
+  const filteredComputed = computedEntries.filter((e) => !realAnimeIds.has(String(e.animeId?._id || e.animeId)))
+
   const upcomingAnimes = await Anime.find({ ...publishedAnimeFilter, status: 'upcoming' })
     .sort({ scheduledReleaseAt: 1, releaseStartDate: 1 })
     .lean()
 
   const payload = {
-    episodes: episodes.filter((e) => e.animeId).map((episode) => publicEpisode(req, episode)),
+    episodes: [
+      ...episodes.filter((e) => e.animeId).map((episode) => publicEpisode(req, episode)),
+      ...filteredComputed.map((entry) => ({
+        ...publicEpisode(req, entry),
+        note: 'Not Out Yet',
+      })),
+    ],
     upcomingAnimes: upcomingAnimes.map((anime) => publicAnime(req, anime)),
   }
   cacheSet('public:schedule', payload, 60_000)

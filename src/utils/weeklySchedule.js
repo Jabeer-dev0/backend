@@ -41,121 +41,68 @@ export function pktDateTimeToUtc(dateStr, time) {
   return new Date(utcMs)
 }
 
-// For each anime with auto weekly schedule enabled (and not finished airing),
-// create the next "full" episode if it does not already exist.
-// Rule: a new episode is only created 1 hour after the previous episode has
-// been released, and its releaseAt is the next weekly slot after that release.
+// No longer auto-creates episode entries. Schedule info is computed from
+// the weeklySchedule config on each anime and shown as "Not Out Yet" until
+// the admin uploads the actual video.
 export async function generateWeeklyEpisodes() {
+  return 0
+}
+
+// Compute the next scheduled episode info for an anime from its weeklySchedule
+// config WITHOUT creating any DB entries. Returns { episodeNo, releaseAt, status }
+// or null if no schedule is configured or anime is finished airing.
+export function computeNextWeeklySchedule(anime) {
+  const ws = anime.weeklySchedule
+  if (!ws || !ws.enabled) return null
+  if (anime.finishedAiring) return null
+
+  const dayOfWeek = Number(ws.dayOfWeek ?? 0)
+  const time = ws.time || '18:00'
+  if (Number.isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) return null
+
+  const lastNo = Number(anime.totalEpisodes || 0)
+  if (lastNo <= 0) return null
+
+  const nextNo = lastNo + 1
+  const now = new Date()
+  const releaseAt = nextWeeklyOccurrence({ dayOfWeek, time }, now)
+
+  return {
+    episodeNo: nextNo,
+    releaseAt,
+    status: 'not_out_yet',
+    title: `Episode ${nextNo}`,
+    note: 'Not Out Yet',
+  }
+}
+
+// Compute upcoming schedule entries for ALL ongoing anime with weekly enabled.
+// Returns virtual episode-like objects for the schedule page.
+export async function computeAllWeeklySchedules() {
   const animes = await Anime.find({
     'weeklySchedule.enabled': true,
     finishedAiring: false,
     status: { $in: ['ongoing', 'upcoming'] },
   }).lean()
 
-  if (!animes.length) return 0
-
-  let created = 0
-  const now = new Date()
-
+  const entries = []
   for (const anime of animes) {
-    const ws = anime.weeklySchedule || {}
-    // Older records can have only { enabled: true }; use the same defaults the
-    // admin form displays so those schedules are not silently skipped.
-    const dayOfWeek = Number(ws.dayOfWeek ?? 0)
-    const time = ws.time || '18:00'
-    if (Number.isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) continue
-
-    // Self-heal: remove any wrongly auto-created scheduled episode whose number
-    // already exists as a released episode (from a previous buggy run).
-    const releasedNos = (await Episode.find({
-      animeId: anime._id,
-      status: 'released',
-    })
-      .select('episodeNo')
-      .lean())
-      .map((e) => Number(e.episodeNo))
-    if (releasedNos.length) {
-      await Episode.deleteMany({
-        animeId: anime._id,
-        status: 'scheduled',
-        episodeNo: { $in: releasedNos },
+    const computed = computeNextWeeklySchedule({ ...anime, weeklySchedule: JSON.parse(anime.weeklySchedule || '{}') })
+    if (computed) {
+      entries.push({
+        _id: `schedule:${anime._id}`,
+        animeId: anime,
+        episodeNo: computed.episodeNo,
+        title: computed.title,
+        releaseAt: computed.releaseAt,
+        status: computed.status,
+        note: computed.note,
+        published: true,
+        scheduleMode: 'computed',
+        thumbnail: anime.defaultThumbnail || anime.poster || '',
       })
     }
-
-    // Self-heal: fix any scheduled episode that is published=false (from an
-    // earlier buggy deploy). They should be visible on the schedule page.
-    await Episode.updateMany(
-      { animeId: anime._id, status: 'scheduled', published: false, releaseAt: { $gt: now } },
-      { $set: { published: true } },
-    )
-
-    const existing = await Episode.find({
-      animeId: anime._id,
-    })
-      .sort({ episodeNo: -1 })
-      .limit(1)
-      .lean()
-
-    const lastNo = existing.length ? Number(existing[0].endSerialNumber || existing[0].episodeNo) : 0
-    const nextNo = lastNo + 1
-
-    const dup = await Episode.findOne({
-      animeId: anime._id,
-      episodeNo: nextNo,
-    }).lean()
-    if (dup) continue
-
-    let releaseAt
-    if (!existing.length && ws.startDate) {
-      // First episode: anchor to the provided start date at the chosen time (PKT).
-      const start = pktDateTimeToUtc(ws.startDate, time)
-      if (start && start.getTime() > now.getTime()) {
-        releaseAt = start
-      }
-    }
-    if (!releaseAt) {
-      if (existing.length) {
-        const last = existing[0]
-        const lastRelease = last.releaseAt ? new Date(last.releaseAt) : null
-
-        // The previous episode must be ACTUALLY released before we create the next one.
-        const isReleased =
-          last.status === 'released' ||
-          (last.published && lastRelease && lastRelease.getTime() <= now.getTime())
-        if (!isReleased) continue
-
-        // And only 1 hour after that release.
-        const releasedAt = lastRelease || now
-        if (now.getTime() < releasedAt.getTime() + 60 * 60 * 1000) continue
-
-        // Next episode must be the FOLLOWING week, never the same day/week.
-        // Start looking from 1 day after the previous release so the same
-        // weekday can't resolve to the current week.
-        const searchFrom = new Date(releasedAt.getTime() + 24 * 60 * 60 * 1000)
-        releaseAt = nextWeeklyOccurrence({ dayOfWeek, time }, searchFrom)
-      } else {
-        // No start date and no episodes yet: schedule the next weekly slot.
-        releaseAt = nextWeeklyOccurrence({ dayOfWeek, time }, now)
-      }
-    }
-    if (releaseAt.getTime() <= now.getTime()) continue
-
-    await Episode.create({
-      animeId: anime._id,
-      episodeNo: nextNo,
-      episodeType: 'full',
-      serialNumber: nextNo,
-      status: 'scheduled',
-      scheduleMode: 'upload_later',
-      releaseAt,
-      published: true,
-      title: `Episode ${nextNo}`,
-      thumbnail: anime.defaultThumbnail || anime.poster || '',
-      durationMin: anime.runtime || 24,
-    })
-    created += 1
-    clearEpisodeCaches()
   }
 
-  return created
+  return entries
 }
