@@ -51,7 +51,7 @@ export async function generateWeeklyEpisodes() {
 // Compute the next scheduled episode info for an anime from its weeklySchedule
 // config WITHOUT creating any DB entries. Returns { episodeNo, releaseAt, status }
 // or null if no schedule is configured or anime is finished airing.
-export function computeNextWeeklySchedule(anime) {
+export async function computeNextWeeklySchedule(anime) {
   const ws = anime.weeklySchedule
   if (!ws || !ws.enabled) return null
   if (anime.finishedAiring) return null
@@ -60,7 +60,12 @@ export function computeNextWeeklySchedule(anime) {
   const time = ws.time || '18:00'
   if (Number.isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) return null
 
-  const lastNo = Number(anime.totalEpisodes || 0)
+  // Count actual released episodes instead of relying on totalEpisodes
+  const lastEp = await Episode.find({ animeId: anime._id || anime.id, status: 'released' })
+    .sort({ episodeNo: -1 })
+    .limit(1)
+    .lean()
+  const lastNo = lastEp.length ? Number(lastEp[0].endSerialNumber || lastEp[0].episodeNo) : 0
   if (lastNo <= 0) return null
 
   const nextNo = lastNo + 1
@@ -88,7 +93,7 @@ export async function computeAllWeeklySchedules() {
   const entries = []
   for (const anime of animes) {
     const ws = typeof anime.weeklySchedule === 'string' ? JSON.parse(anime.weeklySchedule || '{}') : (anime.weeklySchedule || {})
-    const computed = computeNextWeeklySchedule({ ...anime, weeklySchedule: ws })
+    const computed = await computeNextWeeklySchedule({ ...anime, weeklySchedule: ws })
     if (computed) {
       entries.push({
         _id: `schedule:${anime._id}`,
