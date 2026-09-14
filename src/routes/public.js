@@ -474,7 +474,7 @@ router.get('/animes/:animeId', async (req, res) => {
   // If no real scheduled episode, compute from weeklySchedule config
   const computedSchedule = !nextScheduled ? computeNextWeeklySchedule({
     ...anime,
-    weeklySchedule: JSON.parse(anime.weeklySchedule || '{}'),
+    weeklySchedule: typeof anime.weeklySchedule === 'string' ? JSON.parse(anime.weeklySchedule || '{}') : (anime.weeklySchedule || {}),
   }) : null
 
   const payload = {

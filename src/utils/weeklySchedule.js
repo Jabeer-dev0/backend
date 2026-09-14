@@ -87,7 +87,8 @@ export async function computeAllWeeklySchedules() {
 
   const entries = []
   for (const anime of animes) {
-    const computed = computeNextWeeklySchedule({ ...anime, weeklySchedule: JSON.parse(anime.weeklySchedule || '{}') })
+    const ws = typeof anime.weeklySchedule === 'string' ? JSON.parse(anime.weeklySchedule || '{}') : (anime.weeklySchedule || {})
+    const computed = computeNextWeeklySchedule({ ...anime, weeklySchedule: ws })
     if (computed) {
       entries.push({
         _id: `schedule:${anime._id}`,
