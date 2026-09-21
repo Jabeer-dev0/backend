@@ -51,7 +51,7 @@ export async function generateWeeklyEpisodes() {
 // Compute the next scheduled episode info for an anime from its weeklySchedule
 // config WITHOUT creating any DB entries. Returns { episodeNo, releaseAt, status }
 // or null if no schedule is configured or anime is finished airing.
-export async function computeNextWeeklySchedule(anime) {
+export async function computeNextWeeklySchedule(anime, lastEpNoMap) {
   const ws = anime.weeklySchedule
   if (!ws || !ws.enabled) return null
   if (anime.finishedAiring) return null
@@ -60,12 +60,17 @@ export async function computeNextWeeklySchedule(anime) {
   const time = ws.time || '18:00'
   if (Number.isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) return null
 
-  // Count actual released episodes instead of relying on totalEpisodes
-  const lastEp = await Episode.find({ animeId: anime._id || anime.id, status: 'released' })
-    .sort({ episodeNo: -1 })
-    .limit(1)
-    .lean()
-  const lastNo = lastEp.length ? Number(lastEp[0].endSerialNumber || lastEp[0].episodeNo) : 0
+  // Use pre-fetched last episode map if available, otherwise query individually
+  let lastNo = 0
+  if (lastEpNoMap) {
+    lastNo = lastEpNoMap.get(String(anime._id || anime.id)) || 0
+  } else {
+    const lastEp = await Episode.find({ animeId: anime._id || anime.id, status: 'released' })
+      .sort({ episodeNo: -1 })
+      .limit(1)
+      .lean()
+    lastNo = lastEp.length ? Number(lastEp[0].endSerialNumber || lastEp[0].episodeNo) : 0
+  }
 
   // For upcoming anime with no released episodes yet, show episode 1
   const nextNo = lastNo <= 0 ? 1 : lastNo + 1
@@ -90,10 +95,25 @@ export async function computeAllWeeklySchedules() {
     status: { $in: ['ongoing', 'upcoming'] },
   }).lean()
 
+  // Batch-fetch last released episode numbers for all anime in one query
+  const animeIds = animes.map((a) => String(a._id || a.id))
+  const lastEps = await Episode.find({
+    animeId: { $in: animeIds },
+    status: 'released',
+  }).sort({ episodeNo: -1 }).lean()
+
+  const lastEpNoMap = new Map()
+  for (const ep of lastEps) {
+    const aid = String(ep.animeId?._id || ep.animeId)
+    if (!lastEpNoMap.has(aid)) {
+      lastEpNoMap.set(aid, Number(ep.endSerialNumber || ep.episodeNo) || 0)
+    }
+  }
+
   const entries = []
   for (const anime of animes) {
     const ws = typeof anime.weeklySchedule === 'string' ? JSON.parse(anime.weeklySchedule || '{}') : (anime.weeklySchedule || {})
-    const computed = await computeNextWeeklySchedule({ ...anime, weeklySchedule: ws })
+    const computed = await computeNextWeeklySchedule({ ...anime, weeklySchedule: ws }, lastEpNoMap)
     if (computed) {
       entries.push({
         _id: `schedule:${anime._id}`,
