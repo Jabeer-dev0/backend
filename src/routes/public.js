@@ -1034,7 +1034,6 @@ router.get('/schedule', async (req, res) => {
   // Filter out computed entries whose anime already has a real scheduled episode
   const realAnimeIds = new Set(episodes.map((e) => String(e.animeId?._id || e.animeId)))
   const filteredComputed = computedEntries.filter((e) => !realAnimeIds.has(String(e.animeId?._id || e.animeId)))
-  console.log(`[schedule] real=${episodes.length} computed=${computedEntries.length} filtered=${filteredComputed.length}`)
 
   const upcomingAnimes = await Anime.find({ ...publishedAnimeFilter, status: 'upcoming' })
     .sort({ scheduledReleaseAt: 1, releaseStartDate: 1 })
@@ -1049,7 +1048,6 @@ router.get('/schedule', async (req, res) => {
       })),
     ].sort((a, b) => new Date(a.releaseAt) - new Date(b.releaseAt)),
     upcomingAnimes: upcomingAnimes.map((anime) => publicAnime(req, anime)),
-    _debug: { real: episodes.length, computed: computedEntries.length, filtered: filteredComputed.length },
   }
   cacheSet('public:schedule', payload, 60_000)
   setPublicCache(res, 60)
