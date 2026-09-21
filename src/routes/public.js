@@ -1025,10 +1025,16 @@ router.get('/schedule', async (req, res) => {
     .lean()
 
   // Computed "Not Out Yet" entries from weeklySchedule config
-  const computedEntries = await computeAllWeeklySchedules()
+  let computedEntries = []
+  try {
+    computedEntries = await computeAllWeeklySchedules()
+  } catch (err) {
+    console.error('[schedule] computeAllWeeklySchedules error:', err.message)
+  }
   // Filter out computed entries whose anime already has a real scheduled episode
   const realAnimeIds = new Set(episodes.map((e) => String(e.animeId?._id || e.animeId)))
   const filteredComputed = computedEntries.filter((e) => !realAnimeIds.has(String(e.animeId?._id || e.animeId)))
+  console.log(`[schedule] real=${episodes.length} computed=${computedEntries.length} filtered=${filteredComputed.length}`)
 
   const upcomingAnimes = await Anime.find({ ...publishedAnimeFilter, status: 'upcoming' })
     .sort({ scheduledReleaseAt: 1, releaseStartDate: 1 })
