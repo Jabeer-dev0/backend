@@ -66,9 +66,9 @@ export async function computeNextWeeklySchedule(anime) {
     .limit(1)
     .lean()
   const lastNo = lastEp.length ? Number(lastEp[0].endSerialNumber || lastEp[0].episodeNo) : 0
-  if (lastNo <= 0) return null
 
-  const nextNo = lastNo + 1
+  // For upcoming anime with no released episodes yet, show episode 1
+  const nextNo = lastNo <= 0 ? 1 : lastNo + 1
   const now = new Date()
   const releaseAt = nextWeeklyOccurrence({ dayOfWeek, time }, now)
 
